@@ -1,8 +1,8 @@
-﻿using System;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 
 namespace SortingLab
 {
+  // Один кадр визуализации: состояние массива + подсвеченные индексы
   public class SortStep
   {
     public double[] Array { get; set; }
@@ -11,6 +11,7 @@ namespace SortingLab
     public string Comment { get; set; } = "";
   }
 
+  // Итог работы алгоритма
   public class SortResult
   {
     public string Name { get; set; }
@@ -20,6 +21,7 @@ namespace SortingLab
     public double[] Result { get; set; }
   }
 
+  // Базовый класс для всех сортировок
   public abstract class SortBase
   {
     public string Name { get; protected set; }
@@ -27,6 +29,7 @@ namespace SortingLab
     public long MaxIterations { get; set; } = long.MaxValue;
     public bool LimitReached { get; protected set; } = false;
 
+    // Проверка лимита итераций
     protected bool CheckLimit()
     {
       Iterations++;
@@ -38,12 +41,14 @@ namespace SortingLab
       return false;
     }
 
+    // Сам алгоритм — реализуется в наследниках
     public abstract SortResult Sort(double[] input, bool ascending, Action<SortStep> onStep = null);
 
+    // Копия массива
     protected static double[] Copy(double[] source) => (double[])source.Clone();
   }
 
-  // ---------- Пузырьковая (не более n-1 проходов) ----------
+  // ==== ПУЗЫРЬКОВАЯ ==== (n-1 проходов, сравниваем соседей)
   public class BubbleSort : SortBase
   {
     public BubbleSort() { Name = "Пузырьковая"; }
@@ -55,6 +60,7 @@ namespace SortingLab
       var stopwatch = Stopwatch.StartNew();
       int arrayLength = workingArray.Length;
 
+      // Внешние проходы
       for (int outerPass = 0; outerPass < arrayLength - 1; outerPass++)
       {
         bool swapped = false;
@@ -66,6 +72,7 @@ namespace SortingLab
             return new SortResult { Name = Name, ElapsedMs = stopwatch.Elapsed.TotalMilliseconds, Iterations = Iterations, LimitReached = true, Result = workingArray };
           }
 
+          // Сравнение пары
           bool needSwap = ascending
               ? workingArray[innerIndex] > workingArray[innerIndex + 1]
               : workingArray[innerIndex] < workingArray[innerIndex + 1];
@@ -77,6 +84,7 @@ namespace SortingLab
             swapped = true;
           }
 
+          // Кадр для визуализации
           onStep?.Invoke(new SortStep
           {
             Array = Copy(workingArray),
@@ -84,7 +92,7 @@ namespace SortingLab
             Index2 = innerIndex + 1
           });
         }
-        if (!swapped) break;
+        if (!swapped) break; // уже отсортировано
       }
 
       stopwatch.Stop();
@@ -92,7 +100,7 @@ namespace SortingLab
     }
   }
 
-  // ---------- Вставками ----------
+  // ==== ВСТАВКАМИ ==== (берём элемент и вставляем в отсортированную часть)
   public class InsertionSort : SortBase
   {
     public InsertionSort() { Name = "Вставками"; }
@@ -109,6 +117,7 @@ namespace SortingLab
         double currentValue = workingArray[currentIndex];
         int scanIndex = currentIndex - 1;
 
+        // Сдвигаем элементы, пока не найдём место для currentValue
         while (scanIndex >= 0)
         {
           if (CheckLimit())
@@ -146,7 +155,7 @@ namespace SortingLab
     }
   }
 
-  // ---------- Шейкерная (не более (n-1)/2 проходов) ----------
+  // ==== ШЕЙКЕРНАЯ ==== (пузырьковая в обе стороны, (n-1)/2 проходов)
   public class ShakerSort : SortBase
   {
     public ShakerSort() { Name = "Шейкерная"; }
@@ -158,7 +167,7 @@ namespace SortingLab
       var stopwatch = Stopwatch.StartNew();
       int leftBoundary = 0;
       int rightBoundary = workingArray.Length - 1;
-      int maxPasses = (workingArray.Length - 1) / 2;
+      int maxPasses = (workingArray.Length - 1) / 2;  // ограничение по заданию
       int passCounter = 0;
       bool swapped = true;
 
@@ -167,6 +176,7 @@ namespace SortingLab
         swapped = false;
         passCounter++;
 
+        // Проход слева направо
         for (int forwardIndex = leftBoundary; forwardIndex < rightBoundary; forwardIndex++)
         {
           if (CheckLimit())
@@ -198,6 +208,7 @@ namespace SortingLab
         if (!swapped) break;
         swapped = false;
 
+        // Проход справа налево
         for (int backwardIndex = rightBoundary; backwardIndex > leftBoundary; backwardIndex--)
         {
           if (CheckLimit())
@@ -232,7 +243,7 @@ namespace SortingLab
     }
   }
 
-  // ---------- Быстрая ----------
+  // ==== БЫСТРАЯ ==== (рекурсивно: опорный элемент + разделение)
   public class QuickSort : SortBase
   {
     public QuickSort() { Name = "Быстрая"; }
@@ -249,6 +260,7 @@ namespace SortingLab
       return new SortResult { Name = Name, ElapsedMs = stopwatch.Elapsed.TotalMilliseconds, Iterations = Iterations, LimitReached = LimitReached, Result = workingArray };
     }
 
+    // Рекурсивная часть
     private void QuickSortRecursive(double[] workingArray, int leftBoundary, int rightBoundary, bool ascending, Action<SortStep> onStep)
     {
       if (leftBoundary < rightBoundary && !LimitReached)
@@ -267,6 +279,7 @@ namespace SortingLab
       }
     }
 
+    // Разделение: слева меньше опорного, справа больше
     private int Partition(double[] workingArray, int leftBoundary, int rightBoundary, bool ascending, Action<SortStep> onStep)
     {
       double pivotValue = workingArray[rightBoundary];
@@ -311,7 +324,7 @@ namespace SortingLab
     }
   }
 
-  // ---------- BOGO ----------
+  // ==== BOGO ==== (перемешиваем, пока не отсортируется)
   public class BogoSort : SortBase
   {
     public BogoSort() { Name = "BOGO"; }
@@ -323,6 +336,7 @@ namespace SortingLab
       var stopwatch = Stopwatch.StartNew();
       var randomGenerator = new Random();
 
+      // Пока не отсортировано — перемешиваем
       while (!IsSorted(workingArray, ascending))
       {
         if (CheckLimit())
@@ -331,6 +345,7 @@ namespace SortingLab
           return new SortResult { Name = Name, ElapsedMs = stopwatch.Elapsed.TotalMilliseconds, Iterations = Iterations, LimitReached = true, Result = workingArray };
         }
 
+        // Перемешивание Фишера-Йетса
         for (int shuffleIndex = workingArray.Length - 1; shuffleIndex > 0; shuffleIndex--)
         {
           int randomIndex = randomGenerator.Next(shuffleIndex + 1);
@@ -345,6 +360,7 @@ namespace SortingLab
       return new SortResult { Name = Name, ElapsedMs = stopwatch.Elapsed.TotalMilliseconds, Iterations = Iterations, LimitReached = false, Result = workingArray };
     }
 
+    // Проверка: отсортирован ли массив
     private bool IsSorted(double[] workingArray, bool ascending)
     {
       for (int checkIndex = 0; checkIndex < workingArray.Length - 1; checkIndex++)
