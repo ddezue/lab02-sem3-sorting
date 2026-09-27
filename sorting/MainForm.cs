@@ -11,11 +11,23 @@ using ClosedXML.Excel;
 
 namespace SortingLab
 {
+  public class DoubleBufferedPanel : Panel
+  {
+    public DoubleBufferedPanel()
+    {
+      this.DoubleBuffered = true;
+      this.SetStyle(ControlStyles.AllPaintingInWmPaint |
+                    ControlStyles.UserPaint |
+                    ControlStyles.OptimizedDoubleBuffer, true);
+      this.UpdateStyles();
+    }
+  }
+
   public class MainForm : Form
   {
     private DataGridView dataInputGrid;
     private DataGridView resultsGrid;
-    private Panel visualizationPanel;
+    private DoubleBufferedPanel visualizationPanel;
     private Panel contentPanel;
     private Panel settingsPanel;
 
@@ -25,7 +37,6 @@ namespace SortingLab
     private CheckBox quickCheckBox;
     private CheckBox bogoCheckBox;
     private CheckBox ascendingCheckBox;
-    private CheckBox noAnimationCheckBox;
     private CheckBox fractionalCheckBox;
 
     private TextBox countTextBox;
@@ -34,6 +45,8 @@ namespace SortingLab
     private TextBox manualInputTextBox;
     private TextBox maxIterationsTextBox;
 
+    private Button applyManualButton;
+    private Button toggleDetailButton;
     private Label statusLabel;
 
     private List<double> currentData = new List<double>();
@@ -43,6 +56,10 @@ namespace SortingLab
     private double[] displayedArray = new double[0];
     private int highlightedIndex1 = -1;
     private int highlightedIndex2 = -1;
+    private string currentAlgorithmName = "";
+
+    private string lastExcelFilePath = "";
+    private double[] lastSortedResult = null;
 
     public MainForm()
     {
@@ -51,7 +68,7 @@ namespace SortingLab
 
     private void BuildUI()
     {
-      this.Text = "Лабораторная работа: Алгоритмы сортировки";
+      this.Text = "Алгоритмы сортировки";
       this.Size = new Size(1300, 880);
       this.StartPosition = FormStartPosition.CenterScreen;
       this.MinimumSize = new Size(1100, 750);
@@ -64,13 +81,15 @@ namespace SortingLab
       fileMenu.DropDownItems.Add(new ToolStripMenuItem("Загрузить из CSV/TXT", null, (s, e) => LoadFromCsv()));
       fileMenu.DropDownItems.Add(new ToolStripMenuItem("Загрузить из Google Table (CSV)", null, (s, e) => LoadFromGoogle()));
       fileMenu.DropDownItems.Add(new ToolStripSeparator());
+      fileMenu.DropDownItems.Add(new ToolStripMenuItem("Сохранить отсортированное в Excel", null, (s, e) => SaveSortedToExcel()));
+      fileMenu.DropDownItems.Add(new ToolStripSeparator());
       fileMenu.DropDownItems.Add(new ToolStripMenuItem("Выход", null, (s, e) => Close()));
 
       var actionsMenu = new ToolStripMenuItem("Действия");
       actionsMenu.DropDownItems.Add(new ToolStripMenuItem("Сгенерировать данные", null, (s, e) => GenerateData()));
+      actionsMenu.DropDownItems.Add(new ToolStripSeparator());
       actionsMenu.DropDownItems.Add(new ToolStripMenuItem("Рассчитать", null, (s, e) => RunSorts()));
       actionsMenu.DropDownItems.Add(new ToolStripMenuItem("Очистить", null, (s, e) => ClearAll()));
-      actionsMenu.DropDownItems.Add(new ToolStripMenuItem("Переключить детализацию", null, (s, e) => ToggleVisualization()));
 
       mainMenu.Items.Add(fileMenu);
       mainMenu.Items.Add(actionsMenu);
@@ -119,10 +138,38 @@ namespace SortingLab
       settingsPanel.Controls.Add(maxValueTextBox);
       y += 32;
 
-      addCaption("Ручной ввод (пробел/запятая/;):");
-      manualInputTextBox = new TextBox { Location = new Point(10, y), Width = 300, Height = 55, Multiline = true };
+      addCaption("Ручной ввод (числа только через ПРОБЕЛ):");
+      manualInputTextBox = new TextBox
+      {
+        Location = new Point(10, y),
+        Width = 300,
+        Height = 22,
+        Multiline = false,
+        AcceptsReturn = false,
+        AcceptsTab = false
+      };
+      manualInputTextBox.KeyDown += (s, e) =>
+      {
+        if (e.KeyCode == Keys.Enter)
+        {
+          e.SuppressKeyPress = true;
+          e.Handled = true;
+          ApplyManualInput();
+        }
+      };
       settingsPanel.Controls.Add(manualInputTextBox);
-      y += 65;
+      y += 30;
+
+      applyManualButton = new Button
+      {
+        Text = "Применить ручной ввод",
+        Location = new Point(10, y),
+        Width = 300,
+        Height = 30
+      };
+      applyManualButton.Click += (s, e) => ApplyManualInput();
+      settingsPanel.Controls.Add(applyManualButton);
+      y += 40;
 
       addCaption("Ограничение итераций (BOGO):");
       maxIterationsTextBox = new TextBox { Location = new Point(10, y), Width = 300, Text = "10000" };
@@ -133,13 +180,20 @@ namespace SortingLab
       settingsPanel.Controls.Add(ascendingCheckBox);
       y += 28;
 
-      noAnimationCheckBox = new CheckBox { Text = "Без анимации (реальное время)", Location = new Point(10, y), AutoSize = true };
-      settingsPanel.Controls.Add(noAnimationCheckBox);
-      y += 28;
-
       fractionalCheckBox = new CheckBox { Text = "Дробные числа", Location = new Point(10, y), Checked = true, AutoSize = true };
       settingsPanel.Controls.Add(fractionalCheckBox);
-      y += 32;
+      y += 28;
+
+      toggleDetailButton = new Button
+      {
+        Text = "Детализация: включена",
+        Location = new Point(10, y),
+        Width = 300,
+        Height = 28
+      };
+      toggleDetailButton.Click += (s, e) => ToggleVisualization();
+      settingsPanel.Controls.Add(toggleDetailButton);
+      y += 38;
 
       addCaption("Выбор алгоритмов:");
       bubbleCheckBox = new CheckBox { Text = "Пузырьковая", Location = new Point(10, y), Checked = true, AutoSize = true }; y += 24;
@@ -175,18 +229,32 @@ namespace SortingLab
         AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
         RowHeadersVisible = false,
         BackgroundColor = Color.White,
-        EditMode = DataGridViewEditMode.EditOnKeystrokeOrF2
+        EditMode = DataGridViewEditMode.EditOnKeystrokeOrF2,
+        ScrollBars = ScrollBars.Both,
+        AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None,
+        AllowUserToResizeRows = false,
+        ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing
       };
+
       var valueColumn = new DataGridViewTextBoxColumn
       {
         Name = "ValueColumn",
         HeaderText = "Значение",
         AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill
       };
+      var sortedColumn = new DataGridViewTextBoxColumn
+      {
+        Name = "SortedColumn",
+        HeaderText = "Отсортировано",
+        AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+        ReadOnly = true
+      };
       dataInputGrid.Columns.Add(valueColumn);
+      dataInputGrid.Columns.Add(sortedColumn);
+
       layout.Controls.Add(dataInputGrid, 0, 0);
 
-      visualizationPanel = new Panel
+      visualizationPanel = new DoubleBufferedPanel
       {
         Dock = DockStyle.Fill,
         BackColor = Color.White,
@@ -215,14 +283,41 @@ namespace SortingLab
       settingsPanel.SendToBack();
     }
 
-    // ============ Вспомогательные ============
-
     private void ShowInputError(string message, string title = "Некорректный ввод")
     {
       MessageBox.Show(message, title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
     }
 
-    // ============ Загрузка ============
+    private void ApplyManualInput()
+    {
+      string manualRaw = manualInputTextBox.Text.Trim();
+      if (string.IsNullOrEmpty(manualRaw))
+      {
+        ShowInputError("Поле ручного ввода пусто. Введите числа через пробел, например: 5 4 3 2 1");
+        return;
+      }
+
+      var manualTokens = manualRaw.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+      var manualNumbers = new List<double>();
+
+      for (int tokenIndex = 0; tokenIndex < manualTokens.Length; tokenIndex++)
+      {
+        string normalized = manualTokens[tokenIndex].Replace('.', ',');
+        if (!double.TryParse(normalized, out double parsedValue))
+        {
+          ShowInputError(
+              $"Некорректное число в позиции {tokenIndex + 1}: \"{manualTokens[tokenIndex]}\"\n\n" +
+              "Числа разделяются ТОЛЬКО пробелом. Например: 5 4 3 2 1",
+              "Ошибка ручного ввода");
+          return;
+        }
+        manualNumbers.Add(parsedValue);
+      }
+
+      LoadDataToGrid(manualNumbers);
+      manualInputTextBox.Clear();
+      statusLabel.Text = $"Применён ручной ввод: загружено {manualNumbers.Count} чисел";
+    }
 
     private void LoadFromExcel()
     {
@@ -236,14 +331,8 @@ namespace SortingLab
           using (var workbook = new XLWorkbook(openDialog.FileName))
           {
             var worksheet = workbook.Worksheet(1);
-            var usedRange = worksheet.RangeUsed();
-            if (usedRange == null)
-            {
-              ShowInputError("Лист Excel пуст — нет данных для чтения.", "Пустой файл");
-              return;
-            }
-
-            foreach (var cell in usedRange.CellsUsed())
+            var firstColumn = worksheet.Column(1);
+            foreach (var cell in firstColumn.CellsUsed())
             {
               if (double.TryParse(cell.GetString().Replace('.', ','), out double value))
                 parsedNumbers.Add(value);
@@ -252,13 +341,11 @@ namespace SortingLab
 
           if (parsedNumbers.Count == 0)
           {
-            ShowInputError(
-                "В файле Excel не найдено ни одного числа.\n\n" +
-                "Проверьте, что первый лист содержит числовые значения.",
-                "Нет чисел");
+            ShowInputError("В первом столбце Excel не найдено ни одного числа.", "Нет чисел");
             return;
           }
 
+          lastExcelFilePath = openDialog.FileName;
           LoadDataToGrid(parsedNumbers);
           statusLabel.Text = $"Загружено {parsedNumbers.Count} чисел из Excel";
         }
@@ -268,7 +355,7 @@ namespace SortingLab
         }
         catch (IOException)
         {
-          ShowInputError("Не удалось открыть файл.\n\nВозможно, он занят другой программой (Excel).", "Файл занят");
+          ShowInputError("Не удалось открыть файл. Возможно, он занят Excel.", "Файл занят");
         }
         catch (Exception exception)
         {
@@ -282,19 +369,10 @@ namespace SortingLab
       using (var openDialog = new OpenFileDialog { Filter = "CSV/TXT|*.csv;*.txt|Все файлы|*.*" })
       {
         if (openDialog.ShowDialog() != DialogResult.OK) return;
-
         try
         {
           var fileLines = File.ReadAllLines(openDialog.FileName);
-          if (fileLines.Length == 0)
-          {
-            ShowInputError("Файл пуст.", "Ошибка загрузки CSV");
-            return;
-          }
-
           var parsedNumbers = new List<double>();
-          int skipped = 0;
-
           foreach (var fileLine in fileLines)
           {
             var tokens = fileLine.Split(new[] { ' ', ',', ';', '\t' }, StringSplitOptions.RemoveEmptyEntries);
@@ -302,31 +380,15 @@ namespace SortingLab
             {
               if (double.TryParse(token.Replace('.', ','), out double parsedValue))
                 parsedNumbers.Add(parsedValue);
-              else
-                skipped++;
             }
           }
-
           if (parsedNumbers.Count == 0)
           {
-            ShowInputError(
-                "В файле не найдено ни одного числа.\n\n" +
-                "Проверьте, что файл содержит числа (например: 5, -3.14, 0.5), " +
-                "разделённые пробелом, запятой или точкой с запятой.",
-                "Нет чисел в файле");
+            ShowInputError("В файле не найдено ни одного числа.", "Нет чисел");
             return;
           }
-
           LoadDataToGrid(parsedNumbers);
-          statusLabel.Text = $"Загружено {parsedNumbers.Count} чисел из CSV" +
-                             (skipped > 0 ? $" (пропущено {skipped} нечисловых строк)" : "");
-        }
-        catch (IOException)
-        {
-          ShowInputError(
-              "Не удалось прочитать файл.\n\n" +
-              "Возможно, он открыт в другой программе или нет прав доступа.",
-              "Ошибка чтения файла");
+          statusLabel.Text = $"Загружено {parsedNumbers.Count} чисел из CSV";
         }
         catch (Exception exception)
         {
@@ -338,32 +400,14 @@ namespace SortingLab
     private void LoadFromGoogle()
     {
       string googleUrl = Microsoft.VisualBasic.Interaction.InputBox(
-          "Введите ссылку на CSV-экспорт Google Table:\n\n" +
-          "(Файл → Поделиться → Опубликовать в интернете → CSV)", "Google Table", "");
-
-      if (string.IsNullOrWhiteSpace(googleUrl))
-      {
-        MessageBox.Show("Ссылка не введена. Операция отменена.", "Отмена",
-            MessageBoxButtons.OK, MessageBoxIcon.Information);
-        return;
-      }
-
-      if (!googleUrl.StartsWith("http://") && !googleUrl.StartsWith("https://"))
-      {
-        ShowInputError(
-            "Некорректная ссылка.\n\nСсылка должна начинаться с http:// или https://\n" +
-            $"Введено: \"{googleUrl}\"",
-            "Неверная ссылка");
-        return;
-      }
-
+          "Введите ссылку на CSV-экспорт Google Table:", "Google Table", "");
+      if (string.IsNullOrWhiteSpace(googleUrl)) return;
       try
       {
         using (var webClient = new WebClient())
         {
           string downloadedContent = webClient.DownloadString(googleUrl);
           var parsedNumbers = new List<double>();
-
           foreach (var contentLine in downloadedContent.Split('\n'))
           {
             var tokens = contentLine.Split(new[] { ' ', ',', ';', '\t', '\r' }, StringSplitOptions.RemoveEmptyEntries);
@@ -373,27 +417,14 @@ namespace SortingLab
                 parsedNumbers.Add(parsedValue);
             }
           }
-
           if (parsedNumbers.Count == 0)
           {
-            ShowInputError(
-                "По ссылке не найдено ни одного числа.\n\n" +
-                "Проверьте, что таблица опубликована как CSV и содержит числа.",
-                "Нет чисел");
+            ShowInputError("По ссылке не найдено ни одного числа.", "Нет чисел");
             return;
           }
-
           LoadDataToGrid(parsedNumbers);
           statusLabel.Text = $"Загружено {parsedNumbers.Count} чисел из Google Table";
         }
-      }
-      catch (WebException webEx)
-      {
-        ShowInputError(
-            "Не удалось скачать таблицу.\n\n" +
-            $"Причина: {webEx.Message}\n\n" +
-            "Проверьте интернет, правильность ссылки и доступ к таблице.",
-            "Ошибка сети");
       }
       catch (Exception exception)
       {
@@ -401,103 +432,167 @@ namespace SortingLab
       }
     }
 
-    // ============ Генерация ============
-
-    private void GenerateData()
+    private void SaveSortedToExcel()
     {
-      // --- Количество ---
-      string countRaw = countTextBox.Text.Trim();
-      if (string.IsNullOrEmpty(countRaw))
+      if (string.IsNullOrEmpty(lastExcelFilePath) || !File.Exists(lastExcelFilePath))
       {
-        ShowInputError("Количество не введено. Укажите целое число от 1 до 100000.");
-        return;
-      }
-      if (!int.TryParse(countRaw, out int requestedCount))
-      {
-        ShowInputError($"Количество должно быть целым числом.\n\nВведено: \"{countRaw}\"\nПример: 20");
-        return;
-      }
-      if (requestedCount <= 0)
-      {
-        ShowInputError($"Количество должно быть больше 0.\n\nВведено: {requestedCount}");
-        return;
-      }
-      if (requestedCount > 100000)
-      {
-        ShowInputError($"Слишком много чисел.\n\nМаксимум: 100000\nВведено: {requestedCount}");
+        MessageBox.Show(
+            "Excel-файл не загружен.\n\n" +
+            "Порядок работы:\n" +
+            "  1. Файл → Загрузить из Excel (.xlsx)\n" +
+            "  2. Действия → Рассчитать\n" +
+            "  3. Файл → Сохранить отсортированное в Excel",
+            "Нет Excel-файла",
+            MessageBoxButtons.OK, MessageBoxIcon.Warning);
         return;
       }
 
-      // --- Минимум ---
-      string minRaw = minValueTextBox.Text.Trim().Replace('.', ',');
-      if (string.IsNullOrEmpty(minRaw))
+      var sortedNumbers = new List<double>();
+      foreach (DataGridViewRow gridRow in dataInputGrid.Rows)
       {
-        ShowInputError("Минимум не введён. Укажите число, например: -1 или 0,5");
-        return;
+        if (gridRow.IsNewRow) continue;
+        var sortedCell = gridRow.Cells["SortedColumn"].Value;
+        if (sortedCell != null && double.TryParse(sortedCell.ToString().Replace('.', ','), out double parsed))
+          sortedNumbers.Add(parsed);
       }
-      if (!double.TryParse(minRaw, out double minimumValue))
+
+      if (sortedNumbers.Count == 0 && lastSortedResult != null)
+        sortedNumbers = lastSortedResult.ToList();
+
+      if (sortedNumbers.Count == 0)
       {
-        ShowInputError($"Минимум должен быть числом.\n\nВведено: \"{minValueTextBox.Text}\"\nПример: -1 или 0,5");
+        MessageBox.Show(
+            "Нет отсортированных данных.\n\n" +
+            "Сначала выполните сортировку: Действия → Рассчитать",
+            "Нет данных",
+            MessageBoxButtons.OK, MessageBoxIcon.Warning);
         return;
       }
 
-      // --- Максимум ---
-      string maxRaw = maxValueTextBox.Text.Trim().Replace('.', ',');
-      if (string.IsNullOrEmpty(maxRaw))
-      {
-        ShowInputError("Максимум не введён. Укажите число, например: 1 или 100");
-        return;
-      }
-      if (!double.TryParse(maxRaw, out double maximumValue))
-      {
-        ShowInputError($"Максимум должен быть числом.\n\nВведено: \"{maxValueTextBox.Text}\"\nПример: 1 или 100");
-        return;
-      }
+      var answer = MessageBox.Show(
+          $"Отсортировано чисел: {sortedNumbers.Count}\n\n" +
+          $"Исходный файл:\n{lastExcelFilePath}\n\n" +
+          "Перезаписать исходный файл?\n" +
+          "  • Да — перезаписать (2-й столбец заполнится)\n" +
+          "  • Нет — сохранить как новый файл",
+          "Сохранение в Excel",
+          MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
 
-      // --- Логика диапазона ---
-      if (minimumValue >= maximumValue)
-      {
-        ShowInputError($"Минимум должен быть меньше максимума.\n\nМинимум: {minimumValue}\nМаксимум: {maximumValue}");
-        return;
-      }
+      if (answer == DialogResult.Cancel) return;
 
-      // --- Проверка для целых ---
-      if (!fractionalCheckBox.Checked)
+      string targetPath;
+      if (answer == DialogResult.Yes)
       {
-        int intMinCheck = (int)Math.Ceiling(minimumValue);
-        int intMaxCheck = (int)Math.Floor(maximumValue);
-        if (intMinCheck > intMaxCheck)
+        targetPath = lastExcelFilePath;
+      }
+      else
+      {
+        using (var saveDialog = new SaveFileDialog
         {
-          ShowInputError(
-              $"В диапазоне [{minimumValue}; {maximumValue}] нет целых чисел.\n\n" +
-              "Включите «Дробные числа» или расширьте диапазон.");
-          return;
+          Filter = "Excel|*.xlsx",
+          FileName = Path.GetFileNameWithoutExtension(lastExcelFilePath) + "_sorted.xlsx"
+        })
+        {
+          if (saveDialog.ShowDialog() != DialogResult.OK) return;
+          targetPath = saveDialog.FileName;
         }
       }
 
-      // --- Генерация ---
+      try
+      {
+        if (answer == DialogResult.No)
+          File.Copy(lastExcelFilePath, targetPath, overwrite: true);
+
+        using (var workbook = new XLWorkbook(targetPath))
+        {
+          var worksheet = workbook.Worksheet(1);
+
+          int startRow = 1;
+          var firstCell = worksheet.Cell(1, 1);
+          if (!double.TryParse(firstCell.GetString().Replace('.', ','), out _))
+          {
+            worksheet.Cell(1, 2).Value = "Отсортировано";
+            startRow = 2;
+          }
+
+          for (int index = 0; index < sortedNumbers.Count; index++)
+          {
+            worksheet.Cell(startRow + index, 2).Value = sortedNumbers[index];
+          }
+
+          workbook.Save();
+        }
+
+        statusLabel.Text = $"Сохранено {sortedNumbers.Count} чисел в Excel";
+        MessageBox.Show(
+            $"Готово. Отсортированные данные записаны во 2-й столбец:\n\n{targetPath}",
+            "Сохранено",
+            MessageBoxButtons.OK, MessageBoxIcon.Information);
+      }
+      catch (IOException ioEx)
+      {
+        MessageBox.Show(
+            "Не удалось сохранить файл.\n\n" +
+            $"Причина: {ioEx.Message}\n\n" +
+            "Скорее всего файл открыт в Excel — закройте его.",
+            "Файл занят",
+            MessageBoxButtons.OK, MessageBoxIcon.Error);
+      }
+      catch (Exception exception)
+      {
+        MessageBox.Show(
+            "Ошибка сохранения Excel:\n\n" + exception.Message,
+            "Ошибка",
+            MessageBoxButtons.OK, MessageBoxIcon.Error);
+      }
+    }
+
+    private void GenerateData()
+    {
+      if (!int.TryParse(countTextBox.Text.Trim(), out int requestedCount) || requestedCount <= 0 || requestedCount > 100000)
+      {
+        ShowInputError("Количество должно быть целым числом от 1 до 100000.", "Некорректное количество");
+        return;
+      }
+      if (!double.TryParse(minValueTextBox.Text.Trim().Replace('.', ','), out double minimumValue))
+      {
+        ShowInputError("Минимум должен быть числом.", "Некорректный минимум");
+        return;
+      }
+      if (!double.TryParse(maxValueTextBox.Text.Trim().Replace('.', ','), out double maximumValue))
+      {
+        ShowInputError("Максимум должен быть числом.", "Некорректный максимум");
+        return;
+      }
+      if (minimumValue >= maximumValue)
+      {
+        ShowInputError("Минимум должен быть меньше максимума.", "Неверный диапазон");
+        return;
+      }
+
       var randomGenerator = new Random();
       var generatedNumbers = new List<double>();
 
       if (fractionalCheckBox.Checked)
       {
         for (int counter = 0; counter < requestedCount; counter++)
-        {
-          double value = randomGenerator.NextDouble() * (maximumValue - minimumValue) + minimumValue;
-          generatedNumbers.Add(Math.Round(value, 4));
-        }
-        statusLabel.Text = $"Сгенерировано {requestedCount} дробных чисел в [{minimumValue}; {maximumValue}]";
+          generatedNumbers.Add(Math.Round(randomGenerator.NextDouble() * (maximumValue - minimumValue) + minimumValue, 4));
       }
       else
       {
         int intMin = (int)Math.Ceiling(minimumValue);
         int intMax = (int)Math.Floor(maximumValue);
+        if (intMin > intMax)
+        {
+          ShowInputError("В диапазоне нет целых чисел.", "Ошибка");
+          return;
+        }
         for (int counter = 0; counter < requestedCount; counter++)
           generatedNumbers.Add(randomGenerator.Next(intMin, intMax + 1));
-        statusLabel.Text = $"Сгенерировано {requestedCount} целых чисел в [{intMin}; {intMax}]";
       }
 
       LoadDataToGrid(generatedNumbers);
+      statusLabel.Text = $"Сгенерировано {requestedCount} чисел";
     }
 
     private void LoadDataToGrid(List<double> numbers)
@@ -507,17 +602,32 @@ namespace SortingLab
       {
         int rowIndex = dataInputGrid.Rows.Add();
         dataInputGrid.Rows[rowIndex].Cells["ValueColumn"].Value = number;
+        dataInputGrid.Rows[rowIndex].Cells["SortedColumn"].Value = null;
       }
       dataInputGrid.Refresh();
     }
 
-    // ============ Запуск ============
+    private void WriteSortedToSecondColumn(double[] sortedArray)
+    {
+      while (dataInputGrid.Rows.Count < sortedArray.Length)
+        dataInputGrid.Rows.Add();
+
+      for (int rowIndex = 0; rowIndex < sortedArray.Length; rowIndex++)
+        dataInputGrid.Rows[rowIndex].Cells["SortedColumn"].Value = sortedArray[rowIndex];
+
+      for (int rowIndex = sortedArray.Length; rowIndex < dataInputGrid.Rows.Count; rowIndex++)
+      {
+        if (dataInputGrid.Rows[rowIndex].IsNewRow) continue;
+        dataInputGrid.Rows[rowIndex].Cells["SortedColumn"].Value = null;
+      }
+
+      dataInputGrid.Refresh();
+    }
 
     private async void RunSorts()
     {
       try
       {
-        // ===== 1. Чтение данных из таблицы =====
         try
         {
           currentData = ReadDataFromGrid();
@@ -529,71 +639,23 @@ namespace SortingLab
           return;
         }
 
-        // ===== 2. Если пусто — пробуем ручной ввод =====
         if (currentData.Count == 0)
         {
-          string manualRaw = manualInputTextBox.Text.Trim();
-          if (string.IsNullOrEmpty(manualRaw))
-          {
-            ShowInputError(
-                "Нет данных для сортировки.\n\n" +
-                "Варианты:\n" +
-                "  • Действия → Сгенерировать данные\n" +
-                "  • Заполнить таблицу вручную\n" +
-                "  • Ввести числа в поле «Ручной ввод»",
-                "Нет данных");
-            return;
-          }
-
-          var manualTokens = manualRaw.Split(new[] { ' ', ',', ';', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-          var manualNumbers = new List<double>();
-
-          for (int tokenIndex = 0; tokenIndex < manualTokens.Length; tokenIndex++)
-          {
-            string token = manualTokens[tokenIndex].Replace('.', ',');
-            if (!double.TryParse(token, out double parsedValue))
-            {
-              ShowInputError(
-                  $"Некорректное число в позиции {tokenIndex + 1}: \"{manualTokens[tokenIndex]}\"\n\n" +
-                  "Допустимы: 5, -3.14, 0,5. Уберите буквы и лишние символы.",
-                  "Ошибка ручного ввода");
-              return;
-            }
-            manualNumbers.Add(parsedValue);
-          }
-          currentData = manualNumbers;
-        }
-
-        if (currentData.Count == 0)
-        {
-          ShowInputError("После разбора данных список пуст.", "Нет данных");
+          ShowInputError("Нет данных для сортировки.", "Нет данных");
           return;
         }
 
-        // ===== 3. Лимит итераций =====
         long iterationLimit = long.MaxValue;
         string limitRaw = maxIterationsTextBox.Text.Trim();
         if (!string.IsNullOrEmpty(limitRaw))
         {
-          if (!long.TryParse(limitRaw, out iterationLimit))
+          if (!long.TryParse(limitRaw, out iterationLimit) || iterationLimit <= 0)
           {
-            ShowInputError(
-                $"Лимит итераций должен быть целым числом.\n\n" +
-                $"Введено: \"{limitRaw}\"\nПример: 10000",
-                "Некорректный лимит итераций");
-            return;
-          }
-          if (iterationLimit <= 0)
-          {
-            ShowInputError(
-                $"Лимит итераций должен быть больше 0.\n\n" +
-                $"Введено: {iterationLimit}",
-                "Некорректный лимит итераций");
+            ShowInputError("Лимит итераций — целое число > 0.", "Некорректный лимит");
             return;
           }
         }
 
-        // ===== 4. Хотя бы один алгоритм =====
         var selectedAlgorithms = new List<SortBase>();
         if (bubbleCheckBox.Checked) selectedAlgorithms.Add(new BubbleSort { MaxIterations = iterationLimit });
         if (insertionCheckBox.Checked) selectedAlgorithms.Add(new InsertionSort { MaxIterations = iterationLimit });
@@ -603,59 +665,62 @@ namespace SortingLab
 
         if (selectedAlgorithms.Count == 0)
         {
-          ShowInputError(
-              "Не выбран ни один алгоритм.\n\n" +
-              "Отметьте галочками нужные сортировки в разделе «Выбор алгоритмов» (слева). " +
-              "Можно выбрать несколько.",
-              "Алгоритмы не выбраны");
+          ShowInputError("Не выбран ни один алгоритм.", "Алгоритмы не выбраны");
           return;
         }
 
-        // ===== 5. Предупреждение о BOGO =====
         if (bogoCheckBox.Checked && currentData.Count > 10 && iterationLimit == long.MaxValue)
         {
           var answer = MessageBox.Show(
-              $"BOGO на {currentData.Count} элементах без ограничения итераций " +
-              "может работать практически вечно.\n\n" +
-              "Продолжить без ограничения?",
+              $"BOGO на {currentData.Count} элементах без лимита может работать вечно. Продолжить?",
               "BOGO без лимита",
               MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
           if (answer == DialogResult.No) return;
         }
 
-        // ===== 6. Запуск =====
         resultsGrid.Rows.Clear();
+        lastSortedResult = null;
 
         bool ascending = ascendingCheckBox.Checked;
-        bool detailed = currentData.Count <= DetailedThreshold
-                        && detailedVisualization
-                        && !noAnimationCheckBox.Checked;
+        bool detailed = currentData.Count <= DetailedThreshold && detailedVisualization;
 
         foreach (var algorithm in selectedAlgorithms)
         {
           statusLabel.Text = $"Выполняется: {algorithm.Name}...";
+          currentAlgorithmName = algorithm.Name;
           Application.DoEvents();
 
           double[] snapshot = currentData.ToArray();
+          List<SortStep> recordedSteps = detailed ? new List<SortStep>() : null;
 
           var sortResult = await Task.Run(() =>
           {
-            Action<SortStep> stepHandler = null;
+            Action<SortStep> recorder = null;
             if (detailed)
-            {
-              stepHandler = (step) =>
-              {
-                if (this.IsHandleCreated && !this.IsDisposed)
-                  this.BeginInvoke(new Action(() => DrawArray(step.Array, step.Index1, step.Index2)));
-                Thread.Sleep(15);
-              };
-            }
-            return algorithm.Sort(snapshot, ascending, stepHandler);
+              recorder = (step) => recordedSteps.Add(step);
+
+            return algorithm.Sort(snapshot, ascending, recorder);
           });
 
           string statusText = sortResult.LimitReached ? "Лимит итераций" : "Завершено";
           resultsGrid.Rows.Add(sortResult.Name, sortResult.ElapsedMs.ToString("F4"),
               sortResult.Iterations, statusText);
+
+          WriteSortedToSecondColumn(sortResult.Result);
+          lastSortedResult = sortResult.Result;
+
+          if (detailed && recordedSteps != null && recordedSteps.Count > 0)
+          {
+            int totalSteps = recordedSteps.Count;
+            int frameSkip = Math.Max(1, totalSteps / 300);
+
+            for (int stepIndex = 0; stepIndex < totalSteps; stepIndex += frameSkip)
+            {
+              var step = recordedSteps[stepIndex];
+              DrawArray(step.Array, step.Index1, step.Index2);
+              await Task.Delay(15);
+            }
+          }
 
           DrawArray(sortResult.Result, -1, -1);
           await Task.Delay(200);
@@ -673,35 +738,63 @@ namespace SortingLab
     private List<double> ReadDataFromGrid()
     {
       var numbersList = new List<double>();
+      var emptyRows = new List<int>();
       int rowNumber = 0;
 
       foreach (DataGridViewRow gridRow in dataInputGrid.Rows)
       {
         if (gridRow.IsNewRow) continue;
-        rowNumber++;
 
+        rowNumber++;
         var cellValue = gridRow.Cells["ValueColumn"].Value;
 
         if (cellValue == null || string.IsNullOrWhiteSpace(cellValue.ToString()))
-          throw new Exception($"Строка {rowNumber} пуста.\n\n" +
-                              "Удалите пустые строки в таблице или заполните их числами.");
+        {
+          emptyRows.Add(rowNumber);
+          continue;
+        }
 
-        string text = cellValue.ToString().Trim().Replace('.', ',');
-
-        if (!double.TryParse(text, out double parsedNumber))
+        if (!double.TryParse(cellValue.ToString().Trim().Replace('.', ','), out double parsedNumber))
           throw new Exception($"Строка {rowNumber}: \"{cellValue}\" — не число.\n\n" +
-                              "Допустимы числа: 5, -3.14, 0,5. Буквы и посторонние символы запрещены.");
-
-        if (double.IsNaN(parsedNumber) || double.IsInfinity(parsedNumber))
-          throw new Exception($"Строка {rowNumber}: значение вне допустимого диапазона ({cellValue}).");
+                              "Допустимы: 5, -3.14, 0,5. Буквы и посторонние символы запрещены.");
 
         numbersList.Add(parsedNumber);
       }
 
+      if (emptyRows.Count > 0 && numbersList.Count > 0)
+      {
+        bool emptyInMiddle = false;
+        int lastNonEmptyIndex = -1;
+
+        for (int index = 0; index < dataInputGrid.Rows.Count; index++)
+        {
+          if (dataInputGrid.Rows[index].IsNewRow) break;
+          var value = dataInputGrid.Rows[index].Cells["ValueColumn"].Value;
+          if (value != null && !string.IsNullOrWhiteSpace(value.ToString()))
+            lastNonEmptyIndex = index;
+        }
+
+        for (int index = 0; index < lastNonEmptyIndex; index++)
+        {
+          var value = dataInputGrid.Rows[index].Cells["ValueColumn"].Value;
+          if (value == null || string.IsNullOrWhiteSpace(value.ToString()))
+          {
+            emptyInMiddle = true;
+            break;
+          }
+        }
+
+        if (emptyInMiddle)
+        {
+          throw new Exception(
+              "В таблице есть пустые строки между числами.\n\n" +
+              $"Пустые строки: {string.Join(", ", emptyRows)}\n\n" +
+              "Удалите пустые строки (выделите → Delete) или заполните их числами.");
+        }
+      }
+
       return numbersList;
     }
-
-    // ============ Визуализация ============
 
     private void DrawArray(double[] arrayToDraw, int firstHighlight, int secondHighlight)
     {
@@ -716,6 +809,7 @@ namespace SortingLab
       if (displayedArray == null || displayedArray.Length == 0) return;
 
       var graphics = paintArgs.Graphics;
+      graphics.Clear(visualizationPanel.BackColor);
       graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
       int panelWidth = visualizationPanel.Width;
@@ -738,18 +832,26 @@ namespace SortingLab
         else if (elementIndex == highlightedIndex2) barColor = Color.Orange;
 
         using (var brush = new SolidBrush(barColor))
-        {
           graphics.FillRectangle(brush, barX, barY, Math.Max(1, barWidth - 1), barHeight);
-        }
       }
 
-      graphics.DrawString($"Элементов: {elementCount}", this.Font, Brushes.Black, 5, 5);
+      using (var titleFont = new Font("Segoe UI", 14, FontStyle.Bold))
+      using (var titleBrush = new SolidBrush(Color.DarkBlue))
+        graphics.DrawString(currentAlgorithmName, titleFont, titleBrush, 10, 8);
+
+      using (var infoFont = new Font("Segoe UI", 9))
+      using (var infoBrush = new SolidBrush(Color.Gray))
+      {
+        string infoText = $"Элементов: {elementCount}";
+        var textSize = graphics.MeasureString(infoText, infoFont);
+        graphics.DrawString(infoText, infoFont, infoBrush, panelWidth - textSize.Width - 10, 12);
+      }
     }
 
     private void ToggleVisualization()
     {
       detailedVisualization = !detailedVisualization;
-      statusLabel.Text = detailedVisualization ? "Детализация: включена" : "Детализация: выключена";
+      toggleDetailButton.Text = detailedVisualization ? "Детализация: включена" : "Детализация: выключена";
     }
 
     private void ClearAll()
@@ -757,6 +859,9 @@ namespace SortingLab
       dataInputGrid.Rows.Clear();
       resultsGrid.Rows.Clear();
       displayedArray = new double[0];
+      currentAlgorithmName = "";
+      lastExcelFilePath = "";
+      lastSortedResult = null;
       visualizationPanel.Invalidate();
       statusLabel.Text = "Очищено";
     }
