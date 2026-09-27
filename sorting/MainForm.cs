@@ -41,7 +41,7 @@ namespace SortingLab
     private CheckBox bogoCheckBox;
     private CheckBox ascendingCheckBox;
     private CheckBox fractionalCheckBox;
-    private CheckBox detailCheckBox;   // ← новая галочка детализации
+    private CheckBox detailCheckBox;
 
     // ===== ПОЛЯ ВВОДА =====
     private TextBox countTextBox;
@@ -174,8 +174,8 @@ namespace SortingLab
       settingsPanel.Controls.Add(applyManualButton);
       y += 40;
 
-      addCaption("Ограничение итераций (BOGO):");
-      maxIterationsTextBox = new TextBox { Location = new Point(10, y), Width = 300, Text = "10000" };
+      addCaption("Ограничение итераций (только для BOGO):");
+      maxIterationsTextBox = new TextBox { Location = new Point(10, y), Width = 300, Text = "100000" };
       settingsPanel.Controls.Add(maxIterationsTextBox);
       y += 35;
 
@@ -187,7 +187,6 @@ namespace SortingLab
       settingsPanel.Controls.Add(fractionalCheckBox);
       y += 28;
 
-      // Галочка детализации — вместо кнопки
       detailCheckBox = new CheckBox
       {
         Text = "Детализация (пошагово)",
@@ -595,21 +594,32 @@ namespace SortingLab
 
         if (currentData.Count == 0) { ShowInputError("Нет данных для сортировки.", "Нет данных"); return; }
 
+        // Лимит итераций нужен ТОЛЬКО для BOGO
         long iterationLimit = long.MaxValue;
-        string limitRaw = maxIterationsTextBox.Text.Trim();
-        if (!string.IsNullOrEmpty(limitRaw))
+        if (bogoCheckBox.Checked)
         {
+          string limitRaw = maxIterationsTextBox.Text.Trim();
+          if (string.IsNullOrEmpty(limitRaw))
+          {
+            ShowInputError("Для BOGO нужно указать лимит итераций (например, 100000).", "Некорректный лимит");
+            return;
+          }
           if (!long.TryParse(limitRaw, out iterationLimit) || iterationLimit <= 0)
           {
-            ShowInputError("Лимит итераций — целое число > 0.", "Некорректный лимит"); return;
+            ShowInputError("Лимит итераций — целое число > 0.", "Некорректный лимит");
+            return;
           }
         }
 
         var selectedAlgorithms = new List<SortBase>();
-        if (bubbleCheckBox.Checked) selectedAlgorithms.Add(new BubbleSort { MaxIterations = iterationLimit });
-        if (insertionCheckBox.Checked) selectedAlgorithms.Add(new InsertionSort { MaxIterations = iterationLimit });
-        if (shakerCheckBox.Checked) selectedAlgorithms.Add(new ShakerSort { MaxIterations = iterationLimit });
-        if (quickCheckBox.Checked) selectedAlgorithms.Add(new QuickSort { MaxIterations = iterationLimit });
+
+        // Обычные сортировки — БЕЗ лимита
+        if (bubbleCheckBox.Checked) selectedAlgorithms.Add(new BubbleSort());
+        if (insertionCheckBox.Checked) selectedAlgorithms.Add(new InsertionSort());
+        if (shakerCheckBox.Checked) selectedAlgorithms.Add(new ShakerSort());
+        if (quickCheckBox.Checked) selectedAlgorithms.Add(new QuickSort());
+
+        // BOGO — ТОЛЬКО ему ставим лимит
         if (bogoCheckBox.Checked) selectedAlgorithms.Add(new BogoSort { MaxIterations = iterationLimit });
 
         if (selectedAlgorithms.Count == 0) { ShowInputError("Не выбран ни один алгоритм.", "Алгоритмы не выбраны"); return; }
