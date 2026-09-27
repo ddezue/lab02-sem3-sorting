@@ -41,6 +41,7 @@ namespace SortingLab
     private CheckBox bogoCheckBox;
     private CheckBox ascendingCheckBox;
     private CheckBox fractionalCheckBox;
+    private CheckBox detailCheckBox;   // ← новая галочка детализации
 
     // ===== ПОЛЯ ВВОДА =====
     private TextBox countTextBox;
@@ -51,7 +52,6 @@ namespace SortingLab
 
     // ===== КНОПКИ / СТАТУС =====
     private Button applyManualButton;
-    private Button toggleDetailButton;
     private Label statusLabel;
 
     // ===== ДАННЫЕ =====
@@ -187,16 +187,17 @@ namespace SortingLab
       settingsPanel.Controls.Add(fractionalCheckBox);
       y += 28;
 
-      toggleDetailButton = new Button
+      // Галочка детализации — вместо кнопки
+      detailCheckBox = new CheckBox
       {
-        Text = "Детализация: включена",
+        Text = "Детализация (пошагово)",
         Location = new Point(10, y),
-        Width = 300,
-        Height = 28
+        Checked = true,
+        AutoSize = true
       };
-      toggleDetailButton.Click += (s, e) => ToggleVisualization();
-      settingsPanel.Controls.Add(toggleDetailButton);
-      y += 38;
+      detailCheckBox.CheckedChanged += (s, e) => ToggleVisualization();
+      settingsPanel.Controls.Add(detailCheckBox);
+      y += 32;
 
       addCaption("Выбор алгоритмов:");
       bubbleCheckBox = new CheckBox { Text = "Пузырьковая", Location = new Point(10, y), Checked = true, AutoSize = true }; y += 24;
@@ -386,7 +387,6 @@ namespace SortingLab
           string downloadedContent = webClient.DownloadString(googleUrl);
           var parsedNumbers = new List<double>();
 
-          // Читаем ТОЛЬКО первый столбец CSV
           foreach (var contentLine in downloadedContent.Split('\n'))
           {
             var csvTokens = contentLine.Split(',');
@@ -791,8 +791,10 @@ namespace SortingLab
 
     private void ToggleVisualization()
     {
-      detailedVisualization = !detailedVisualization;
-      toggleDetailButton.Text = detailedVisualization ? "Детализация: включена" : "Детализация: выключена";
+      detailedVisualization = detailCheckBox.Checked;
+      statusLabel.Text = detailedVisualization
+          ? "Детализация: включена (мало чисел — по шагам)"
+          : "Детализация: выключена (только финал)";
     }
 
     private void ClearAll()
