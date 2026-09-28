@@ -136,8 +136,8 @@ namespace SortingLab
       settingsPanel.Controls.Add(new Label { Text = "Минимум:", Location = new Point(10, y), AutoSize = true });
       settingsPanel.Controls.Add(new Label { Text = "Максимум:", Location = new Point(165, y), AutoSize = true });
       y += 22;
-      minValueTextBox = new TextBox { Location = new Point(10, y), Width = 140, Text = "-1" };
-      maxValueTextBox = new TextBox { Location = new Point(165, y), Width = 145, Text = "1" };
+      minValueTextBox = new TextBox { Location = new Point(10, y), Width = 140, Text = "-1000000" };
+      maxValueTextBox = new TextBox { Location = new Point(165, y), Width = 145, Text = "1000000" };
       settingsPanel.Controls.Add(minValueTextBox);
       settingsPanel.Controls.Add(maxValueTextBox);
       y += 32;
@@ -276,7 +276,7 @@ namespace SortingLab
       };
       resultsGrid.Columns.Add("AlgorithmColumn", "Алгоритм");
       resultsGrid.Columns.Add("TimeColumn", "Время (мс)");
-      resultsGrid.Columns.Add("IterationsColumn", "Итераций");
+      resultsGrid.Columns.Add("IterationsColumn", "Проходов");
       resultsGrid.Columns.Add("StatusColumn", "Статус");
       layout.Controls.Add(resultsGrid, 0, 2);
 
@@ -310,7 +310,7 @@ namespace SortingLab
         {
           ShowInputError(
               $"Некорректное число в позиции {tokenIndex + 1}: \"{manualTokens[tokenIndex]}\"\n\n" +
-              "Числа разделяются ТОЛЬКО пробелом. Например: 5 4 3 2 1",
+              "Числа разделяются ТОЛЬКО пробелом. Например: 5 4 3 2 1  или  1.5 2.7 -3.14",
               "Ошибка ручного ввода");
           return;
         }
@@ -338,7 +338,9 @@ namespace SortingLab
             var firstColumn = worksheet.Column(1);
             foreach (var cell in firstColumn.CellsUsed())
             {
-              if (double.TryParse(cell.GetString().Replace('.', ','), out double value))
+              string cellText = cell.GetString().Trim();
+              if (string.IsNullOrEmpty(cellText)) continue;   // пропускаем пустые строки
+              if (double.TryParse(cellText.Replace('.', ','), out double value))
                 parsedNumbers.Add(value);
             }
           }
@@ -512,9 +514,9 @@ namespace SortingLab
     // ===== ГЕНЕРАЦИЯ ДАННЫХ =====
     private void GenerateData()
     {
-      if (!int.TryParse(countTextBox.Text.Trim(), out int requestedCount) || requestedCount <= 0 || requestedCount > 100000)
+      if (!int.TryParse(countTextBox.Text.Trim(), out int requestedCount) || requestedCount <= 0 || requestedCount > 1000000)
       {
-        ShowInputError("Количество должно быть целым числом от 1 до 100000.", "Некорректное количество"); return;
+        ShowInputError("Количество должно быть целым числом от 1 до 1000000.", "Некорректное количество"); return;
       }
       if (!double.TryParse(minValueTextBox.Text.Trim().Replace('.', ','), out double minimumValue))
       {
@@ -539,11 +541,11 @@ namespace SortingLab
       }
       else
       {
-        int intMin = (int)Math.Ceiling(minimumValue);
-        int intMax = (int)Math.Floor(maximumValue);
+        long intMin = (long)Math.Ceiling(minimumValue);
+        long intMax = (long)Math.Floor(maximumValue);
         if (intMin > intMax) { ShowInputError("В диапазоне нет целых чисел.", "Ошибка"); return; }
         for (int counter = 0; counter < requestedCount; ++counter)
-          generatedNumbers.Add(randomGenerator.Next(intMin, intMax + 1));
+          generatedNumbers.Add(randomGenerator.Next((int)intMin, (int)intMax + 1));
       }
 
       LoadDataToGrid(generatedNumbers);
