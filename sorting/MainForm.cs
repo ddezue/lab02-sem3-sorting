@@ -242,14 +242,16 @@ namespace SortingLab
       {
         Name = "ValueColumn",
         HeaderText = "Значение",
-        AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill
+        AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+        SortMode = DataGridViewColumnSortMode.NotSortable
       };
       var sortedColumn = new DataGridViewTextBoxColumn
       {
         Name = "SortedColumn",
         HeaderText = "Отсортировано",
         AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
-        ReadOnly = true
+        ReadOnly = true,
+        SortMode = DataGridViewColumnSortMode.NotSortable
       };
       dataInputGrid.Columns.Add(valueColumn);
       dataInputGrid.Columns.Add(sortedColumn);
@@ -276,7 +278,7 @@ namespace SortingLab
       };
       resultsGrid.Columns.Add("AlgorithmColumn", "Алгоритм");
       resultsGrid.Columns.Add("TimeColumn", "Время (мс)");
-      resultsGrid.Columns.Add("IterationsColumn", "Проходов");
+      resultsGrid.Columns.Add("IterationsColumn", "Итераций");
       resultsGrid.Columns.Add("StatusColumn", "Статус");
       layout.Controls.Add(resultsGrid, 0, 2);
 
@@ -339,7 +341,7 @@ namespace SortingLab
             foreach (var cell in firstColumn.CellsUsed())
             {
               string cellText = cell.GetString().Trim();
-              if (string.IsNullOrEmpty(cellText)) continue;   // пропускаем пустые строки
+              if (string.IsNullOrEmpty(cellText)) continue;
               if (double.TryParse(cellText.Replace('.', ','), out double value))
                 parsedNumbers.Add(value);
             }
@@ -511,7 +513,7 @@ namespace SortingLab
       }
     }
 
-    // ===== ГЕНЕРАЦИЯ ДАННЫХ =====
+    // ===== ГЕНЕРАЦИЯ ДАННЫХ (СЛУЧАЙНЫЕ!) =====
     private void GenerateData()
     {
       if (!int.TryParse(countTextBox.Text.Trim(), out int requestedCount) || requestedCount <= 0 || requestedCount > 1000000)
@@ -541,11 +543,11 @@ namespace SortingLab
       }
       else
       {
-        long intMin = (long)Math.Ceiling(minimumValue);
-        long intMax = (long)Math.Floor(maximumValue);
+        int intMin = (int)Math.Ceiling(minimumValue);
+        int intMax = (int)Math.Floor(maximumValue);
         if (intMin > intMax) { ShowInputError("В диапазоне нет целых чисел.", "Ошибка"); return; }
         for (int counter = 0; counter < requestedCount; ++counter)
-          generatedNumbers.Add(randomGenerator.Next((int)intMin, (int)intMax + 1));
+          generatedNumbers.Add(randomGenerator.Next(intMin, intMax + 1));
       }
 
       LoadDataToGrid(generatedNumbers);
@@ -596,7 +598,6 @@ namespace SortingLab
 
         if (currentData.Count == 0) { ShowInputError("Нет данных для сортировки.", "Нет данных"); return; }
 
-        // Лимит итераций нужен ТОЛЬКО для BOGO
         long iterationLimit = long.MaxValue;
         if (bogoCheckBox.Checked)
         {
@@ -615,13 +616,10 @@ namespace SortingLab
 
         var selectedAlgorithms = new List<SortBase>();
 
-        // Обычные сортировки — БЕЗ лимита
         if (bubbleCheckBox.Checked) selectedAlgorithms.Add(new BubbleSort());
         if (insertionCheckBox.Checked) selectedAlgorithms.Add(new InsertionSort());
         if (shakerCheckBox.Checked) selectedAlgorithms.Add(new ShakerSort());
         if (quickCheckBox.Checked) selectedAlgorithms.Add(new QuickSort());
-
-        // BOGO — ТОЛЬКО ему ставим лимит
         if (bogoCheckBox.Checked) selectedAlgorithms.Add(new BogoSort { MaxIterations = iterationLimit });
 
         if (selectedAlgorithms.Count == 0) { ShowInputError("Не выбран ни один алгоритм.", "Алгоритмы не выбраны"); return; }
