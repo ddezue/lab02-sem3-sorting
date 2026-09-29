@@ -58,7 +58,7 @@ namespace SortingLab
 
     // ===== ДАННЫЕ =====
     private List<double> currentData = new List<double>();
-    private const int HistogramLimit = 5000;
+    private const int HistogramLimit = 50;
     private bool detailedVisualization = true;
     private const int DetailedThreshold = 50;
     private const int MaxRenderedBars = 500;
@@ -233,9 +233,9 @@ namespace SortingLab
         RowCount = 3
       };
       layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-      layout.RowStyles.Add(new RowStyle(SizeType.Percent, 40f));
-      layout.RowStyles.Add(new RowStyle(SizeType.Percent, 25f));
       layout.RowStyles.Add(new RowStyle(SizeType.Percent, 35f));
+      layout.RowStyles.Add(new RowStyle(SizeType.Percent, 65f));
+      layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 200f));
       contentPanel.Controls.Add(layout);
 
       dataInputGrid = new DataGridView
@@ -280,7 +280,12 @@ namespace SortingLab
         AllowUserToAddRows = false,
         AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
         RowHeadersVisible = false,
-        BackgroundColor = Color.White
+        BackgroundColor = Color.White,
+        RowTemplate = { Height = 26 },
+        ColumnHeadersHeight = 30,
+        ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
+        AllowUserToResizeRows = false,
+        ScrollBars = ScrollBars.Vertical
       };
       resultsGrid.Columns.Add("AlgorithmColumn", "Алгоритм");
       resultsGrid.Columns.Add("TimeColumn", "Время (мс)");
@@ -860,7 +865,7 @@ namespace SortingLab
 
       if (elementCount > HistogramLimit)
       {
-        string message = $"Слишком много элементов для отображения гистограммы ({elementCount})";
+        string message = $"Элементов больше {HistogramLimit}, гистограмма не отображается";
         var textSize = graphics.MeasureString(message, infoFont);
         graphics.DrawString(message, infoFont, infoBrush,
             (panelWidth - textSize.Width) / 2,
