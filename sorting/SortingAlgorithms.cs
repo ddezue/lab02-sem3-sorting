@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace SortingLab
@@ -17,7 +18,7 @@ namespace SortingLab
   {
     public string Name { get; set; }
     public double ElapsedMs { get; set; }
-    public long Iterations { get; set; }   // ПРОХОДЫ, не сравнения
+    public long Iterations { get; set; }
     public bool LimitReached { get; set; }
     public double[] Result { get; set; }
   }
@@ -27,19 +28,6 @@ namespace SortingLab
   {
     public string Name { get; protected set; }
     public long Iterations { get; protected set; }
-    public long MaxIterations { get; set; } = long.MaxValue;
-    public bool LimitReached { get; protected set; } = false;
-
-    protected bool CheckLimit()
-    {
-      ++Iterations;
-      if (Iterations >= MaxIterations)
-      {
-        LimitReached = true;
-        return true;
-      }
-      return false;
-    }
 
     public abstract SortResult Sort(double[] input, bool ascending, Action<SortStep> onStep = null);
     protected static double[] Copy(double[] source) => (double[])source.Clone();
@@ -52,20 +40,16 @@ namespace SortingLab
 
     public override SortResult Sort(double[] input, bool ascending, Action<SortStep> onStep)
     {
-      Iterations = 0; LimitReached = false;
+      Iterations = 0;
       var workingArray = Copy(input);
       var stopwatch = Stopwatch.StartNew();
       int arrayLength = workingArray.Length;
 
       for (int outerPass = 0; outerPass < arrayLength - 1; ++outerPass)
       {
-        if (CheckLimit())
-        {
-          stopwatch.Stop();
-          return new SortResult { Name = Name, ElapsedMs = stopwatch.Elapsed.TotalMilliseconds, Iterations = Iterations, LimitReached = true, Result = workingArray };
-        }
-
+        ++Iterations;
         bool swapped = false;
+
         for (int innerIndex = 0; innerIndex < arrayLength - 1 - outerPass; ++innerIndex)
         {
           bool needSwap = ascending
@@ -78,22 +62,22 @@ namespace SortingLab
                 (workingArray[innerIndex + 1], workingArray[innerIndex]);
             swapped = true;
           }
-
-          if (onStep != null)
-          {
-            onStep(new SortStep
-            {
-              Array = Copy(workingArray),
-              Index1 = innerIndex,
-              Index2 = innerIndex + 1
-            });
-          }
         }
+
+        onStep?.Invoke(new SortStep { Array = Copy(workingArray) });
+
         if (!swapped) break;
       }
 
       stopwatch.Stop();
-      return new SortResult { Name = Name, ElapsedMs = stopwatch.Elapsed.TotalMilliseconds, Iterations = Iterations, LimitReached = false, Result = workingArray };
+      return new SortResult
+      {
+        Name = Name,
+        ElapsedMs = stopwatch.Elapsed.TotalMilliseconds,
+        Iterations = Iterations,
+        LimitReached = false,
+        Result = workingArray
+      };
     }
   }
 
@@ -104,19 +88,14 @@ namespace SortingLab
 
     public override SortResult Sort(double[] input, bool ascending, Action<SortStep> onStep)
     {
-      Iterations = 0; LimitReached = false;
+      Iterations = 0;
       var workingArray = Copy(input);
       var stopwatch = Stopwatch.StartNew();
       int arrayLength = workingArray.Length;
 
       for (int currentIndex = 1; currentIndex < arrayLength; ++currentIndex)
       {
-        if (CheckLimit())
-        {
-          stopwatch.Stop();
-          return new SortResult { Name = Name, ElapsedMs = stopwatch.Elapsed.TotalMilliseconds, Iterations = Iterations, LimitReached = true, Result = workingArray };
-        }
-
+        ++Iterations;
         double currentValue = workingArray[currentIndex];
         int scanIndex = currentIndex - 1;
 
@@ -129,32 +108,26 @@ namespace SortingLab
 
           workingArray[scanIndex + 1] = workingArray[scanIndex];
           --scanIndex;
-
-          if (onStep != null)
-          {
-            onStep(new SortStep
-            {
-              Array = Copy(workingArray),
-              Index1 = scanIndex + 1,
-              Index2 = currentIndex
-            });
-          }
         }
         workingArray[scanIndex + 1] = currentValue;
 
-        if (onStep != null)
+        onStep?.Invoke(new SortStep
         {
-          onStep(new SortStep
-          {
-            Array = Copy(workingArray),
-            Index1 = scanIndex + 1,
-            Index2 = currentIndex
-          });
-        }
+          Array = Copy(workingArray),
+          Index1 = scanIndex + 1,
+          Index2 = currentIndex
+        });
       }
 
       stopwatch.Stop();
-      return new SortResult { Name = Name, ElapsedMs = stopwatch.Elapsed.TotalMilliseconds, Iterations = Iterations, LimitReached = false, Result = workingArray };
+      return new SortResult
+      {
+        Name = Name,
+        ElapsedMs = stopwatch.Elapsed.TotalMilliseconds,
+        Iterations = Iterations,
+        LimitReached = false,
+        Result = workingArray
+      };
     }
   }
 
@@ -165,25 +138,16 @@ namespace SortingLab
 
     public override SortResult Sort(double[] input, bool ascending, Action<SortStep> onStep)
     {
-      Iterations = 0; LimitReached = false;
+      Iterations = 0;
       var workingArray = Copy(input);
       var stopwatch = Stopwatch.StartNew();
       int leftBoundary = 0;
       int rightBoundary = workingArray.Length - 1;
-      int maxPasses = (workingArray.Length - 1) / 2;
-      int passCounter = 0;
-      bool swapped = true;
 
-      while (swapped && leftBoundary < rightBoundary && passCounter < maxPasses)
+      while (leftBoundary < rightBoundary)
       {
-        if (CheckLimit())
-        {
-          stopwatch.Stop();
-          return new SortResult { Name = Name, ElapsedMs = stopwatch.Elapsed.TotalMilliseconds, Iterations = Iterations, LimitReached = true, Result = workingArray };
-        }
-
-        swapped = false;
-        ++passCounter;
+        ++Iterations;
+        bool swapped = false;
 
         for (int forwardIndex = leftBoundary; forwardIndex < rightBoundary; ++forwardIndex)
         {
@@ -197,21 +161,8 @@ namespace SortingLab
                 (workingArray[forwardIndex + 1], workingArray[forwardIndex]);
             swapped = true;
           }
-
-          if (onStep != null)
-          {
-            onStep(new SortStep
-            {
-              Array = Copy(workingArray),
-              Index1 = forwardIndex,
-              Index2 = forwardIndex + 1
-            });
-          }
         }
         --rightBoundary;
-
-        if (!swapped) break;
-        swapped = false;
 
         for (int backwardIndex = rightBoundary; backwardIndex > leftBoundary; --backwardIndex)
         {
@@ -221,26 +172,27 @@ namespace SortingLab
 
           if (needSwap)
           {
-            (workingArray[backwardIndex], workingArray[backwardIndex - 1]) =
-                (workingArray[backwardIndex - 1], workingArray[backwardIndex]);
+            (workingArray[backwardIndex - 1], workingArray[backwardIndex]) =
+                (workingArray[backwardIndex], workingArray[backwardIndex - 1]);
             swapped = true;
-          }
-
-          if (onStep != null)
-          {
-            onStep(new SortStep
-            {
-              Array = Copy(workingArray),
-              Index1 = backwardIndex - 1,
-              Index2 = backwardIndex
-            });
           }
         }
         ++leftBoundary;
+
+        onStep?.Invoke(new SortStep { Array = Copy(workingArray) });
+
+        if (!swapped) break;
       }
 
       stopwatch.Stop();
-      return new SortResult { Name = Name, ElapsedMs = stopwatch.Elapsed.TotalMilliseconds, Iterations = Iterations, LimitReached = false, Result = workingArray };
+      return new SortResult
+      {
+        Name = Name,
+        ElapsedMs = stopwatch.Elapsed.TotalMilliseconds,
+        Iterations = Iterations,
+        LimitReached = false,
+        Result = workingArray
+      };
     }
   }
 
@@ -249,45 +201,78 @@ namespace SortingLab
   {
     public QuickSort() { Name = "Быстрая"; }
 
+    private readonly Random _rng = new Random();
+    private const int InsertionCutoff = 16;
+
     public override SortResult Sort(double[] input, bool ascending, Action<SortStep> onStep)
     {
-      Iterations = 0; LimitReached = false;
+      Iterations = 0;
       var workingArray = Copy(input);
       var stopwatch = Stopwatch.StartNew();
 
-      QuickSortRecursive(workingArray, 0, workingArray.Length - 1, ascending, onStep);
+      var stack = new Stack<(int left, int right)>();
+      stack.Push((0, workingArray.Length - 1));
 
-      stopwatch.Stop();
-      return new SortResult { Name = Name, ElapsedMs = stopwatch.Elapsed.TotalMilliseconds, Iterations = Iterations, LimitReached = LimitReached, Result = workingArray };
-    }
-
-    private void QuickSortRecursive(double[] workingArray, int leftBoundary, int rightBoundary, bool ascending, Action<SortStep> onStep)
-    {
-      if (leftBoundary < rightBoundary && !LimitReached)
+      while (stack.Count > 0)
       {
-        if (CheckLimit())
+        var (left, right) = stack.Pop();
+        if (left >= right) continue;
+
+        if (right - left < InsertionCutoff)
         {
-          LimitReached = true;
-          return;
+          for (int currentIndex = left + 1; currentIndex <= right; ++currentIndex)
+          {
+            double currentValue = workingArray[currentIndex];
+            int scanIndex = currentIndex - 1;
+            while (scanIndex >= left &&
+                   (ascending ? workingArray[scanIndex] > currentValue
+                              : workingArray[scanIndex] < currentValue))
+            {
+              workingArray[scanIndex + 1] = workingArray[scanIndex];
+              --scanIndex;
+            }
+            workingArray[scanIndex + 1] = currentValue;
+          }
+          continue;
         }
 
-        int pivotIndex = Partition(workingArray, leftBoundary, rightBoundary, ascending, onStep);
-        if (LimitReached) return;
+        ++Iterations;
+        int pivotIndex = Partition(workingArray, left, right, ascending, onStep);
 
-        QuickSortRecursive(workingArray, leftBoundary, pivotIndex - 1, ascending, onStep);
-        QuickSortRecursive(workingArray, pivotIndex + 1, rightBoundary, ascending, onStep);
+        if (pivotIndex - left < right - pivotIndex)
+        {
+          stack.Push((pivotIndex + 1, right));
+          stack.Push((left, pivotIndex - 1));
+        }
+        else
+        {
+          stack.Push((left, pivotIndex - 1));
+          stack.Push((pivotIndex + 1, right));
+        }
       }
+
+      stopwatch.Stop();
+      return new SortResult
+      {
+        Name = Name,
+        ElapsedMs = stopwatch.Elapsed.TotalMilliseconds,
+        Iterations = Iterations,
+        LimitReached = false,
+        Result = workingArray
+      };
     }
 
     private int Partition(double[] workingArray, int leftBoundary, int rightBoundary, bool ascending, Action<SortStep> onStep)
     {
+      int randomIndex = _rng.Next(leftBoundary, rightBoundary + 1);
+      (workingArray[randomIndex], workingArray[rightBoundary]) =
+          (workingArray[rightBoundary], workingArray[randomIndex]);
+
       double pivotValue = workingArray[rightBoundary];
       int smallerElementIndex = leftBoundary - 1;
 
       for (int scanIndex = leftBoundary; scanIndex < rightBoundary; ++scanIndex)
       {
-        if (LimitReached) return smallerElementIndex + 1;
-
         bool needSwap = ascending
             ? workingArray[scanIndex] <= pivotValue
             : workingArray[scanIndex] >= pivotValue;
@@ -298,34 +283,20 @@ namespace SortingLab
           (workingArray[smallerElementIndex], workingArray[scanIndex]) =
               (workingArray[scanIndex], workingArray[smallerElementIndex]);
         }
-
-        if (onStep != null)
-        {
-          onStep(new SortStep
-          {
-            Array = Copy(workingArray),
-            Index1 = smallerElementIndex,
-            Index2 = scanIndex,
-            Comment = $"pivot={pivotValue:F4}"
-          });
-        }
       }
 
       (workingArray[smallerElementIndex + 1], workingArray[rightBoundary]) =
           (workingArray[rightBoundary], workingArray[smallerElementIndex + 1]);
 
-      if (onStep != null)
+      int resultIndex = smallerElementIndex + 1;
+      onStep?.Invoke(new SortStep
       {
-        onStep(new SortStep
-        {
-          Array = Copy(workingArray),
-          Index1 = smallerElementIndex + 1,
-          Index2 = rightBoundary,
-          Comment = $"pivot={pivotValue:F4}"
-        });
-      }
+        Array = Copy(workingArray),
+        Index1 = resultIndex,
+        Comment = $"pivot={pivotValue:F4}"
+      });
 
-      return smallerElementIndex + 1;
+      return resultIndex;
     }
   }
 
@@ -334,24 +305,30 @@ namespace SortingLab
   {
     public BogoSort() { Name = "BOGO"; }
 
+    public long MaxIterations { get; set; } = long.MaxValue;
+    public bool LimitReached { get; private set; } = false;
+
+    private readonly Random _rng = new Random();
+
     public override SortResult Sort(double[] input, bool ascending, Action<SortStep> onStep)
     {
-      Iterations = 0; LimitReached = false;
+      Iterations = 0;
+      LimitReached = false;
       var workingArray = Copy(input);
       var stopwatch = Stopwatch.StartNew();
-      var randomGenerator = new Random();
 
       while (!IsSorted(workingArray, ascending))
       {
-        if (CheckLimit())
+        if (Iterations >= MaxIterations)
         {
-          stopwatch.Stop();
-          return new SortResult { Name = Name, ElapsedMs = stopwatch.Elapsed.TotalMilliseconds, Iterations = Iterations, LimitReached = true, Result = workingArray };
+          LimitReached = true;
+          break;
         }
+        ++Iterations;
 
         for (int shuffleIndex = workingArray.Length - 1; shuffleIndex > 0; --shuffleIndex)
         {
-          int randomIndex = randomGenerator.Next(shuffleIndex + 1);
+          int randomIndex = _rng.Next(shuffleIndex + 1);
           (workingArray[shuffleIndex], workingArray[randomIndex]) =
               (workingArray[randomIndex], workingArray[shuffleIndex]);
         }
@@ -360,7 +337,14 @@ namespace SortingLab
       }
 
       stopwatch.Stop();
-      return new SortResult { Name = Name, ElapsedMs = stopwatch.Elapsed.TotalMilliseconds, Iterations = Iterations, LimitReached = false, Result = workingArray };
+      return new SortResult
+      {
+        Name = Name,
+        ElapsedMs = stopwatch.Elapsed.TotalMilliseconds,
+        Iterations = Iterations,
+        LimitReached = LimitReached,
+        Result = workingArray
+      };
     }
 
     private bool IsSorted(double[] workingArray, bool ascending)
