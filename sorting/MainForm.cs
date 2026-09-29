@@ -756,7 +756,11 @@ namespace SortingLab
         if (quickCheckBox.Checked) selectedAlgorithms.Add(new QuickSort());
         if (bogoCheckBox.Checked) selectedAlgorithms.Add(new BogoSort { MaxIterations = bogoLimit });
 
-        if (selectedAlgorithms.Count == 0) { ShowInputError("Не выбран ни один алгоритм.", "Алгоритмы не выбраны"); return; }
+        if (selectedAlgorithms.Count == 0)
+        {
+          ShowInputError("Не выбран ни один алгоритм.", "Алгоритмы не выбраны");
+          return;
+        }
 
         if (bogoCheckBox.Checked && currentData.Count > 500)
         {
